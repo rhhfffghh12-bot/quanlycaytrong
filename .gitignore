@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Moi truong ao
+.venv/
+venv/
+env/
+ENV/
+
+# Thu vien va file bien dich
+DLLs/
+Lib/
+Scripts/
+Include/
+
+# File tam
+*.log
+.pytest_cache/
+
+# Thong tin bi mat
+.env
+.env.*
+!.env.example
+
+# File he thong
+.DS_Store
+Thumbs.db
