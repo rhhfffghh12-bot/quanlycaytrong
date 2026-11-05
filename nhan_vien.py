@@ -99,5 +99,3 @@ class NhanVien:
         nv.bang_cong = deepcopy(data["bang_cong"])
         nv.nghi_phep = deepcopy(data["nghi_phep"])
         return nv
-
-

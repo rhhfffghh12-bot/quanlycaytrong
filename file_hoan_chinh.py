@@ -1,7 +1,15 @@
-# ==================== Cay_+.py ====================
-from datetime import date
+from datetime import date, datetime
 from math import isfinite
 from copy import deepcopy
+import json
+import os
+from pathlib import Path
+
+DATA_FILE = Path(__file__).resolve().parent / 'data' / 'trang_trai.json'
+
+# ========================================================================
+# NGUOI 1 - CLASS CAY TRONG + CHAM SOC + TOAN BO MENU CUA NGUOI 1
+# ========================================================================
 
 class CayTrong:
     TRANG_THAI = ("Dang trong", "Dang thu hoach", "Ket thuc")
@@ -117,10 +125,6 @@ class CayTrong:
         cay.lich_su_so_cay = deepcopy(du_lieu.get("lich_su_so_cay",[]))
         cay.nhat_ky_sinh_truong = deepcopy(du_lieu.get("nhat_ky_sinh_truong",[]))
         return cay
-
-# ==================== Cham_soc.py ====================
-from datetime import datetime, date
-
 
 class ChamSoc:
     LOAI_CONG_VIEC = ("Tuoi nuoc", "Bon phan", "Phun thuoc", "Cat tia", "Kiem tra sau benh", "Khac")
@@ -261,9 +265,8 @@ class ChamSoc:
         if self.trang_thai != "Chua thuc hien":
             raise ValueError("Trang thai khong hop le")
 
-        if not self.ma_nhan_vien:
-            raise ValueError("Chua phan cong nhan vien")
-
+        # Cho phep bat dau khi chua phan cong nhan vien.
+        # Phan cong la tuy chon; khong phai rang buoc de chay rieng module.
         self.trang_thai = "Dang thuc hien"
 
         self._ghi_nhat_ky("Bat dau", "Bat dau cham soc")
@@ -382,11 +385,354 @@ class ChamSoc:
 
         return cv
 
-# ==================== nhan_vien.py ====================
-from datetime import date
-from math import isfinite
-from copy import deepcopy
+def chi_tiet_cay(cay):
+    print("\n========== THONG TIN LO CAY ==========")
+    for nhan, gia_tri in (
+        ("Ma lo", cay.ma), ("Ten cay", cay.ten),
+        ("Giong", cay.giong), ("Khu vuc", cay.khu_vuc),
+        ("Ma vu", cay.ma_vu), ("Ngay trong", cay.ngay_trong),
+        ("Dien tich (m2)", cay.dien_tich),
+        ("So cay ban dau", cay.so_cay_ban_dau),
+        ("So cay hien tai", cay.so_cay_hien_tai),
+        ("Trang thai", cay.trang_thai),
+        ("Ty le so cay hien tai (%)", cay.tinh_ty_le_so_cay()),
+        ("Mat do (cay/ha)", cay.tinh_mat_do()),
+    ):
+        print(f"{nhan}: {gia_tri}")
 
+    try:
+        print("So ngay tu khi trong:", cay.tinh_tuoi_ngay())
+    except ValueError:
+        print("So ngay tu khi trong: Chua den ngay trong")
+
+def thong_ke_cay(q):
+    ds = list(q.cay_trong.values())
+
+    if not ds:
+        print("Chua co du lieu cay trong.")
+        return
+
+    print("\n========== THONG KE CAY TRONG ==========")
+    print("So lo cay:", len(ds))
+    print("Tong dien tich (m2):", round(sum(c.dien_tich for c in ds), 2))
+    print("Tong so cay ban dau:", sum(c.so_cay_ban_dau for c in ds))
+    print("Tong so cay hien tai:", sum(c.so_cay_hien_tai for c in ds))
+
+    print("So cay theo trang thai:")
+    for tt in CayTrong.TRANG_THAI:
+        print(f"  {tt}: {sum(c.trang_thai == tt for c in ds)} lo")
+
+    theo_khu = {}
+
+    for cay in ds:
+        if cay.khu_vuc not in theo_khu:
+            theo_khu[cay.khu_vuc] = {
+                "so_lo": 0,
+                "dien_tich": 0,
+                "so_cay": 0
+            }
+
+        thong_ke = theo_khu[cay.khu_vuc]
+        thong_ke["so_lo"] += 1
+        thong_ke["dien_tich"] += cay.dien_tich
+        thong_ke["so_cay"] += cay.so_cay_hien_tai
+
+    print("Thong ke theo khu vuc:")
+
+    for khu, thong_ke in sorted(theo_khu.items()):
+        print(
+            f"  {khu}: {thong_ke['so_lo']} lo | "
+            f"{thong_ke['dien_tich']:g} m2 | "
+            f"{thong_ke['so_cay']} cay"
+        )
+
+def menu_cay(q):
+
+    while True:
+        print("\n========== QUAN LY CAY TRONG ==========")
+        print("1. Them lo cay")
+        print("2. Xem danh sach lo cay")
+        print("3. Tim kiem theo ma, ten, giong, khu, vu")
+        print("4. Xem chi tiet mot lo cay")
+        print("5. Sua thong tin lo cay")
+        print("6. Ghi nhan cay chet / trong bo sung")
+        print("7. Ghi nhan sinh truong va tinh trang")
+        print("8. Xem lich su thay doi so cay")
+        print("9. Xem nhat ky sinh truong")
+        print("10. Doi trang thai lo cay")
+        print("11. Thong ke cay trong")
+        print("12. Xoa lo cay")
+        print("13. Luu du lieu")
+        print("0. Quay lai menu chinh")
+
+        chon = nhap("Chon")
+
+        if chon == "0":
+            return
+
+        try:
+            # THEM LO CAY
+            if chon == "1":
+                cay = CayTrong(
+                    nhap("Ma lo cay"),
+                    nhap("Ten cay"),
+                    nhap("Giong"),
+                    nhap("Khu vuc"),
+                    nhap("Ma vu"),
+                    so("Dien tich m2"),
+                    so("So cay ban dau", True),
+                    nhap("Ngay trong YYYY-MM-DD")
+                )
+
+                q.them_cay(cay)
+                print("Da them lo cay:", cay.ma)
+
+            # XEM DANH SACH
+            elif chon == "2":
+                ds = sorted(q.cay_trong.values(), key=lambda c: c.ma)
+
+                print(f"Danh sach: {len(ds)} lo cay")
+                hien(ds)
+
+            # TIM KIEM
+            elif chon == "3":
+                tu_khoa = nhap("Tu khoa can tim")
+                ds = q.tim_cay(tu_khoa)
+
+                print(f"Tim thay {len(ds)} lo")
+                hien(ds)
+
+            # XEM CHI TIET
+            elif chon == "4":
+                chi_tiet_cay(q.lay_cay(nhap("Ma lo can xem")))
+
+            # SUA THONG TIN
+            elif chon == "5":
+                ma = nhap("Ma lo can sua")
+                cay = q.lay_cay(ma)
+
+                print("De trong va Enter neu muon giu gia tri cu.")
+
+                ten = nhap_tuy_chon("Ten cay", cay.ten)
+                giong = nhap_tuy_chon("Giong", cay.giong)
+                khu = nhap_tuy_chon("Khu vuc", cay.khu_vuc)
+                dt = nhap_tuy_chon("Dien tich m2", cay.dien_tich)
+
+                thay_doi = {}
+
+                if ten is not None:
+                    thay_doi["ten"] = ten
+
+                if giong is not None:
+                    thay_doi["giong"] = giong
+
+                if khu is not None:
+                    thay_doi["khu_vuc"] = khu
+
+                if dt is not None:
+                    thay_doi["dien_tich"] = float(dt)
+
+                if thay_doi:
+                    q.sua_cay(ma, **thay_doi)
+                    print("Da cap nhat lo cay.")
+                else:
+                    print("Khong co thong tin thay doi.")
+
+            # GHI NHAN CAY CHET / TRONG BO SUNG
+            elif chon == "6":
+                cay = q.lay_cay(nhap("Ma lo"))
+
+                cay.ghi_nhan_so_cay(
+                    nhap("Ngay ghi nhan YYYY-MM-DD"),
+                    so("So cay chet", True),
+                    so("So cay trong bo sung", True),
+                    nhap("Ghi chu")
+                )
+
+                print(
+                    "Da ghi nhan. So cay hien tai:", cay.so_cay_hien_tai)
+
+            # GHI NHAN SINH TRUONG
+            elif chon == "7":
+                cay = q.lay_cay(nhap("Ma lo"))
+
+                cay.ghi_nhan_sinh_truong(
+                    nhap("Ngay ghi nhan YYYY-MM-DD"),
+                    nhap("Giai doan sinh truong"),
+                    nhap("Tinh trang cay"),
+                    nhap("Ghi chu")
+                )
+
+                print("Da them nhat ky sinh truong.")
+
+            # XEM LICH SU SO CAY
+            elif chon == "8":
+                cay = q.lay_cay(nhap("Ma lo"))
+
+                if not cay.lich_su_so_cay:
+                    print("Chua co lich su thay doi so cay.")
+
+                for i, x in enumerate(cay.lich_su_so_cay, 1):
+                    print(
+                        f"{i}. {x['ngay']} | "
+                        f"Chet: {x['so_cay_chet']} | "
+                        f"Bo sung: {x['so_cay_bo_sung']} | "
+                        f"Ghi chu: {x.get('ghi_chu', '')}"
+                    )
+
+            # XEM NHAT KY SINH TRUONG
+            elif chon == "9":
+                cay = q.lay_cay(nhap("Ma lo"))
+
+                if not cay.nhat_ky_sinh_truong:
+                    print("Chua co nhat ky sinh truong.")
+
+                for i, x in enumerate(cay.nhat_ky_sinh_truong, 1):
+                    print(
+                        f"{i}. {x['ngay']} | "
+                        f"{x['giai_doan']} | "
+                        f"{x['tinh_trang']} | "
+                        f"{x.get('ghi_chu', '')}"
+                    )
+
+            # DOI TRANG THAI
+            elif chon == "10":
+                cay = q.lay_cay(nhap("Ma lo"))
+
+                print("1. Dang trong")
+                print("2. Dang thu hoach")
+                print("3. Ket thuc")
+
+                lua_chon = nhap("Chon trang thai moi")
+
+                mapping = {
+                    "1": "Dang trong",
+                    "2": "Dang thu hoach",
+                    "3": "Ket thuc"
+                }
+
+                if lua_chon not in mapping:
+                    print("Trang thai khong hop le.")
+                    continue
+
+                cay.doi_trang_thai(mapping[lua_chon])
+
+                print("Trang thai moi:", cay.trang_thai)
+
+            # THONG KE CAY TRONG
+            elif chon == "11":
+                thong_ke_cay(q)
+
+            # XOA LO CAY
+            elif chon == "12":
+                cay = q.lay_cay(nhap("Ma lo can xoa"))
+
+                print("Sap xoa:", cay.hien_thi())
+
+                if nhap("Xac nhan xoa? (y/n)").lower() == "y":
+                    q.xoa_cay(cay.ma)
+                    print("Da xoa lo cay.")
+                else:
+                    print("Da huy thao tac xoa.")
+
+            # LUU DU LIEU
+            elif chon == "13":
+                q.luu(DATA_FILE)
+                print("Da luu du lieu:", DATA_FILE)
+
+            else:
+                print("Lua chon khong hop le.")
+
+        except (ValueError, KeyError, TypeError, OSError) as loi:
+            print("LOI:", loi)
+            print("Hay kiem tra du lieu va thu lai.")
+
+def dam_bao_lo_cay(q, ma_cay):
+    """Cho phep bat ky menu nao tu nhap lo cay thieu, khong can vao menu Nguoi 1."""
+    if ma_cay in q.cay_trong:
+        return ma_cay
+    print(f"\nChua co lo cay '{ma_cay}' trong du lieu.")
+    if nhap("Tao lo cay nay ngay tai day? (y/n)").lower() != "y":
+        raise ValueError("Can lo cay hop le de tiep tuc. Chua thay doi du lieu.")
+    # Chi tao tu thong tin nguoi dung nhap; KHONG tu sinh du lieu gia.
+    cay = CayTrong(
+        ma_cay, nhap("Ten cay"), nhap("Giong"), nhap("Khu vuc"),
+        nhap("Ma vu"), so("Dien tich m2"),
+        so("So cay ban dau", True), nhap("Ngay trong YYYY-MM-DD")
+    )
+    q.them_cay(cay)
+    print("Da tao lo cay:", ma_cay)
+    return ma_cay
+
+
+def ma_nv_list():
+    print("Co the bo trong ma nhan vien de quan ly cham soc doc lap.")
+    du_lieu = nhap("Nhap ma nhan vien (Enter = chua phan cong), cach nhau dau phay")
+
+    return [
+        ma.strip()
+        for ma in du_lieu.split(",")
+        if ma.strip()
+    ]
+
+def menu_cham_soc(q):
+    while True:
+        print("\n========== QUAN LY CHAM SOC ==========")
+        print("1. Them cong viec\n2. Danh sach cong viec\n3. Doi phan cong")
+        print("4. Bat dau\n5. Hoan thanh\n6. Huy cong viec\n7. Xoa cong viec")
+        print("8. Xem nhat ky\n9. Xem cong viec qua han\n0. Quay lai")
+        chon = nhap("Chon")
+        if chon == "0":
+            return
+        try:
+            if chon == "1":
+                ma, ma_cay = nhap("Ma cong viec"), nhap("Ma lo cay")
+                print("Loai hop le:", ", ".join(ChamSoc.LOAI_CONG_VIEC))
+                cv = ChamSoc(
+                    ma, ma_cay, nhap("Loai cong viec"),
+                    nhap("Ngay du kien YYYY-MM-DD"), ma_nv_list(),
+                    nhap("Noi dung"), so("So luong du kien"),
+                    nhap("Don vi"), nhap("Ten vat tu")
+                )
+                dam_bao_lo_cay(q, ma_cay)
+                q.them_cham_soc(cv)
+                print("Da them cong viec.")
+            elif chon == "2":
+                hien(list(q.cham_soc.values()))
+            elif chon == "3":
+                q.sua_phan_cong(nhap("Ma cong viec"), ma_nv_list())
+                print("Da doi phan cong.")
+            elif chon == "4":
+                q.bat_dau_cham_soc(nhap("Ma cong viec"))
+                print("Da bat dau.")
+            elif chon == "5":
+                q.hoan_thanh_cham_soc(
+                    nhap("Ma cong viec"), nhap("Ngay thuc hien YYYY-MM-DD"),
+                    so("So luong thuc te"), so("Chi phi vat tu"),
+                    so("Chi phi nhan cong"), so("Chi phi khac"), nhap("Ghi chu")
+                )
+                print("Da hoan thanh va ghi nhan chi phi.")
+            elif chon == "6":
+                q.huy_cham_soc(nhap("Ma cong viec"), nhap("Ly do huy"))
+                print("Da huy.")
+            elif chon == "7":
+                ma = nhap("Ma cong viec")
+                if nhap("Xac nhan xoa? (y/n)").lower() == "y":
+                    q.xoa_cham_soc(ma)
+                    print("Da xoa.")
+            elif chon == "8":
+                hien_ban_ghi(q.lay_cv(nhap("Ma cong viec")).xem_nhat_ky())
+            elif chon == "9":
+                hien([cv for cv in q.cham_soc.values() if cv.kiem_tra_qua_han()])
+            else:
+                print("Lua chon khong hop le.")
+        except (ValueError, KeyError, TypeError) as loi:
+            print("LOI:", loi)
+            print("Goi y: De trong ma nhan vien neu chua co du lieu Nguoi 2.")
+
+# ========================================================================
+# NGUOI 2 - CLASS NHAN VIEN + KINH DOANH + TOAN BO MENU CUA NGUOI 2
+# ========================================================================
 
 class NhanVien:
     TRANG_THAI = (
@@ -484,14 +830,6 @@ class NhanVien:
         nv.bang_cong = deepcopy(data["bang_cong"])
         nv.nghi_phep = deepcopy(data["nghi_phep"])
         return nv
-
-
-
-# ==================== Kinh_doanh.py ====================
-
-from datetime import date
-from math import isfinite
-from copy import deepcopy
 
 class KinhDoanh:
 
@@ -893,12 +1231,148 @@ class KinhDoanh:
 
         return kd
 
+def menu_nv(q):
+    while True:
+        print("\n========== QUAN LY NHAN VIEN ==========")
+        print("1. Them nhan vien\n2. Danh sach nhan vien\n3. Tim nhan vien")
+        print("4. Sua thong tin\n5. Cham cong\n6. Tinh luong")
+        print("7. Cho nghi viec\n8. Xoa nhan vien\n0. Quay lai")
+        chon = nhap("Chon")
+        if chon == "0":
+            return
+        try:
+            if chon == "1":
+                nv = NhanVien(
+                    nhap("Ma nhan vien"), nhap("Ho ten"), nhap("Chuc vu"),
+                    nhap("Ngay vao lam YYYY-MM-DD"), so("Luong mot cong"),
+                    nhap("So dien thoai")
+                )
+                q.them_nhan_vien(nv)
+                print("Da them nhan vien.")
+            elif chon == "2":
+                hien(q.danh_sach_nhan_vien())
+            elif chon == "3":
+                hien(q.tim_nhan_vien(nhap("Tu khoa")))
+            elif chon == "4":
+                nv = q.lay_nv(nhap("Ma nhan vien"))
+                thay_doi = {}
+                for truong, nhan in (
+                    ("ho_ten", "Ho ten"), ("chuc_vu", "Chuc vu"),
+                    ("ngay_vao_lam", "Ngay vao lam YYYY-MM-DD"),
+                    ("luong_mot_cong", "Luong mot cong"),
+                    ("so_dien_thoai", "So dien thoai")
+                ):
+                    gia_tri = nhap_tuy_chon(nhan, getattr(nv, truong))
+                    if gia_tri is not None:
+                        thay_doi[truong] = (float(gia_tri) if truong == "luong_mot_cong" else gia_tri)
+                q.sua_nhan_vien(nv.ma_nv, **thay_doi)
+                print("Da cap nhat.")
+            elif chon == "5":
+                q.cham_cong_nhan_vien(
+                    nhap("Ma nhan vien"), nhap("Ngay YYYY-MM-DD"),
+                    so("So cong (0 den 1)")
+                )
+                print("Da cham cong.")
+            elif chon == "6":
+                ma = nhap("Ma nhan vien")
+                thang, nam = so("Thang", True), so("Nam", True)
+                if not 1 <= thang <= 12 or not 1 <= nam <= 9999:
+                    raise ValueError("Thang hoac nam khong hop le")
+                print("Luong:", q.tinh_luong_nhan_vien(ma, thang, nam, so("Phu cap"), so("Thuong"), so("Khau tru")))
+            elif chon == "7":
+                q.nghi_viec(nhap("Ma nhan vien"))
+                print("Da ghi nhan nghi viec.")
+            elif chon == "8":
+                ma = nhap("Ma nhan vien")
+                if nhap("Xac nhan xoa? (y/n)").lower() == "y":
+                    q.xoa_nhan_vien(ma)
+                    print("Da xoa.")
+            else:
+                print("Lua chon khong hop le.")
+        except (ValueError, KeyError, TypeError) as loi:
+            print("LOI:", loi)
 
-# ==================== Quan_ly_trang_trai.py ====================
+def hien_ban_ghi(danh_sach):
+    if not danh_sach:
+        print("Khong co du lieu.")
+    for ban_ghi in danh_sach:
+        print(" | ".join(f"{ten}: {gia_tri}" for ten, gia_tri in ban_ghi.items()))
 
-import json
-import os
-from pathlib import Path
+def menu_kinh_doanh(q):
+    kd = q.kinh_doanh
+    while True:
+        print("\n========== QUAN LY KINH DOANH ==========")
+        print("1. Them khach hang\n2. Danh sach khach hang\n3. Ghi thu hoach")
+        print("4. Xem thu hoach\n5. Tao don hang\n6. Xem don hang")
+        print("7. Giao hang\n8. Thanh toan\n9. Huy don hang")
+        print("10. Ghi chi phi\n11. Xem chi phi\n12. Xem ton kho")
+        print("13. Bao cao kinh doanh\n0. Quay lai")
+        chon = nhap("Chon")
+        if chon == "0":
+            return
+        try:
+            if chon == "1":
+                q.them_khach_hang(nhap("Ma khach hang"), nhap("Ten khach hang"),
+                                  nhap("So dien thoai"), nhap("Dia chi"))
+                print("Da them khach hang.")
+            elif chon == "2":
+                hien_ban_ghi(kd.khach_hang.values())
+            elif chon == "3":
+                ma_th, ma_cay = nhap("Ma thu hoach"), nhap("Ma lo cay")
+                dam_bao_lo_cay(q, ma_cay)
+                q.thu_hoach(ma_th, ma_cay,
+                           nhap("Ngay YYYY-MM-DD"), so("So luong kg"),
+                           nhap("Pham chat (Enter = Dat)") or "Dat")
+                print("Da ghi thu hoach.")
+            elif chon == "4":
+                hien_ban_ghi(kd.thu_hoach)
+            elif chon == "5":
+                ma_dh, ma_cay = nhap("Ma don hang"), nhap("Ma lo cay")
+                dam_bao_lo_cay(q, ma_cay)
+                q.tao_don(ma_dh, ma_cay,
+                          nhap("Ma khach hang"), nhap("Ngay YYYY-MM-DD"),
+                          so("So luong kg"), so("Don gia moi kg"))
+                print("Da tao don hang.")
+            elif chon == "6":
+                hien_ban_ghi(kd.don_hang)
+            elif chon == "7":
+                kd.giao_hang(nhap("Ma don hang"), nhap("Ngay giao YYYY-MM-DD"))
+                print("Da giao hang.")
+            elif chon == "8":
+                kd.thanh_toan(nhap("Ma don hang"), so("So tien"),
+                             nhap("Ngay thanh toan YYYY-MM-DD"))
+                print("Da ghi thanh toan.")
+            elif chon == "9":
+                ma = nhap("Ma don hang")
+                if nhap("Xac nhan huy? (y/n)").lower() == "y":
+                    kd.huy_don(ma)
+                    print("Da huy don.")
+            elif chon == "10":
+                ma_cp, ma_cay = nhap("Ma chi phi"), nhap("Ma lo cay")
+                dam_bao_lo_cay(q, ma_cay)
+                q.ghi_chi_phi(ma_cp, ma_cay,
+                              nhap("Ngay YYYY-MM-DD"), nhap("Loai chi phi"),
+                              so("So tien"), nhap("Ghi chu"))
+                print("Da ghi chi phi.")
+            elif chon == "11":
+                hien_ban_ghi(kd.chi_phi)
+            elif chon == "12":
+                ma = nhap("Ma lo cay")
+                dam_bao_lo_cay(q, ma)
+                print("Ton kho kha dung (kg):", kd.ton_kho(ma))
+            elif chon == "13":
+                ma = nhap("Ma lo cay (Enter = tat ca)") or None
+                hien_ban_ghi([q.bao_cao(ma)])
+            else:
+                print("Lua chon khong hop le.")
+        except (ValueError, KeyError, TypeError) as loi:
+            print("LOI:", loi)
+
+# ========================================================================
+# NGUOI 3 - LOP TICH HOP, HAM DUNG CHUNG, BAO CAO, MENU CHINH
+# ========================================================================
+# Trong QuanLyTrangTrai, cac nhom phuong thuc duoc danh dau ro chu so huu.
+# 5 CLASS DUOC GIU NGUYEN: khong them class phu, khong gan ham dong.
 
 class QuanLyTrangTrai:
     def __init__(self):
@@ -908,6 +1382,7 @@ class QuanLyTrangTrai:
         self.kinh_doanh = KinhDoanh()
 
 
+    # ===== NGUOI 1: NGHIEP VU CAY TRONG =====
     def them_cay(self, cay):
         if not isinstance(cay, CayTrong):
             raise TypeError("Phai la doi tuong CayTrong")
@@ -943,107 +1418,7 @@ class QuanLyTrangTrai:
             raise ValueError("Lo cay co du lieu kinh doanh, khong the xoa")
         del self.cay_trong[ma]
 
-    # THEM NHAN VIEN
-    def them_nhan_vien(self, nv):
-        if not isinstance(nv, NhanVien):
-            raise TypeError("Phai la doi tuong NhanVien")
-
-        if nv.ma_nv in self.nhan_vien:
-            raise ValueError("Ma nhan vien da ton tai")
-
-        self.nhan_vien[nv.ma_nv] = nv
-
-
-    # LAY NHAN VIEN THEO MA
-    def lay_nv(self, ma_nv):
-        if ma_nv not in self.nhan_vien:
-            raise ValueError("Khong tim thay nhan vien")
-
-        return self.nhan_vien[ma_nv]
-
-
-    # CAP NHAT THONG TIN NHAN VIEN
-    def sua_nhan_vien(self, ma_nv, **thay_doi):
-        nv = self.lay_nv(ma_nv)
-        nv.cap_nhat(**thay_doi)
-
-
-    # TIM KIEM NHAN VIEN
-    def tim_nhan_vien(self, tu_khoa):
-        tu_khoa = tu_khoa.casefold()
-        ket_qua = []
-
-        for nv in self.nhan_vien.values():
-            if (
-                tu_khoa in nv.ma_nv.casefold()
-                or tu_khoa in nv.ho_ten.casefold()
-                or tu_khoa in nv.chuc_vu.casefold()
-            ):
-                ket_qua.append(nv)
-
-        return ket_qua
-
-
-    # DANH SACH NHAN VIEN
-    def danh_sach_nhan_vien(self):
-        return list(self.nhan_vien.values())
-
-
-    # CHO NHAN VIEN NGHI VIEC
-    def nghi_viec(self, ma_nv):
-        nv = self.lay_nv(ma_nv)
-
-        for cv in self.cham_soc.values():
-            if ma_nv in cv.ma_nhan_vien:
-                if cv.trang_thai in ("Chua thuc hien", "Dang thuc hien"):
-                    raise ValueError("Nhan vien con cong viec chua hoan thanh")
-
-        nv.doi_trang_thai("Nghi viec")
-
-    # XOA NHAN VIEN
-    def xoa_nhan_vien(self, ma_nv):
-        nv = self.lay_nv(ma_nv)
-
-        if nv.cong_viec or nv.bang_cong or nv.nghi_phep:
-            raise ValueError("Nhan vien da co lich su, khong the xoa")
-
-        for cv in self.cham_soc.values():
-            if ma_nv in cv.ma_nhan_vien:
-                raise ValueError("Nhan vien dang co du lieu phan cong")
-
-        del self.nhan_vien[ma_nv]
-
-    # CHAM CONG NHAN VIEN
-    def cham_cong_nhan_vien(self, ma_nv, ngay, so_cong):
-        nv = self.lay_nv(ma_nv)
-
-        nv.cham_cong(ngay, so_cong)
-
-    # TINH LUONG NHAN VIEN
-    def tinh_luong_nhan_vien(self, ma_nv, thang, nam, phu_cap=0, thuong=0, khau_tru=0):
-        nv = self.lay_nv(ma_nv)
-
-        return nv.tinh_luong(thang, nam, phu_cap, thuong, khau_tru) 
-
-    def sua_nhan_vien(self, ma_nv, **thay_doi):
-        nv = self.lay_nv(ma_nv)
-        nv.cap_nhat(**thay_doi)
-
-
-    def _kiem_tra_nv(self, ds_ma):
-
-        # Kiem tra ma nhan vien trung nhau
-        if len(ds_ma) != len(set(ds_ma)):
-            raise ValueError("Trung ma nhan vien trong phan cong")
-
-        # Kiem tra tung nhan vien
-        for ma in ds_ma:
-            nv = self.lay_nv(ma)
-
-            if nv.trang_thai != "Dang lam viec":
-                raise ValueError(f"Nhan vien {ma} da nghi viec")
-
-
+    # ===== NGUOI 1: NGHIEP VU CHAM SOC CAY TRONG =====
     def lay_cv(self, ma_cv):
         if ma_cv not in self.cham_soc:
             raise ValueError("Khong tim thay cong viec")
@@ -1069,7 +1444,8 @@ class QuanLyTrangTrai:
         if cv.ngay_du_kien < cay.ngay_trong:
             raise ValueError("Ngay cham soc truoc ngay trong")
 
-        # Kiem tra nhan vien
+        # Khong phan cong van duoc tao va chay cong viec doc lap.
+        # Neu co ma NV, ma do van phai hop le de bao ve tinh nhat quan.
         self._kiem_tra_nv(cv.ma_nhan_vien)
 
         for ma in cv.ma_nhan_vien:
@@ -1175,6 +1551,106 @@ class QuanLyTrangTrai:
 
         del self.cham_soc[ma_cv]
 
+
+    # ===== NGUOI 2: QUAN LY NHAN VIEN =====
+    def them_nhan_vien(self, nv):
+        if not isinstance(nv, NhanVien):
+            raise TypeError("Phai la doi tuong NhanVien")
+
+        if nv.ma_nv in self.nhan_vien:
+            raise ValueError("Ma nhan vien da ton tai")
+
+        self.nhan_vien[nv.ma_nv] = nv
+
+
+    # LAY NHAN VIEN THEO MA
+    def lay_nv(self, ma_nv):
+        if ma_nv not in self.nhan_vien:
+            raise ValueError("Khong tim thay nhan vien")
+
+        return self.nhan_vien[ma_nv]
+
+
+    # CAP NHAT THONG TIN NHAN VIEN
+    def sua_nhan_vien(self, ma_nv, **thay_doi):
+        nv = self.lay_nv(ma_nv)
+        nv.cap_nhat(**thay_doi)
+
+
+    # TIM KIEM NHAN VIEN
+    def tim_nhan_vien(self, tu_khoa):
+        tu_khoa = tu_khoa.casefold()
+        ket_qua = []
+
+        for nv in self.nhan_vien.values():
+            if (
+                tu_khoa in nv.ma_nv.casefold()
+                or tu_khoa in nv.ho_ten.casefold()
+                or tu_khoa in nv.chuc_vu.casefold()
+            ):
+                ket_qua.append(nv)
+
+        return ket_qua
+
+
+    # DANH SACH NHAN VIEN
+    def danh_sach_nhan_vien(self):
+        return list(self.nhan_vien.values())
+
+
+    # CHO NHAN VIEN NGHI VIEC
+    def nghi_viec(self, ma_nv):
+        nv = self.lay_nv(ma_nv)
+
+        for cv in self.cham_soc.values():
+            if ma_nv in cv.ma_nhan_vien:
+                if cv.trang_thai in ("Chua thuc hien", "Dang thuc hien"):
+                    raise ValueError("Nhan vien con cong viec chua hoan thanh")
+
+        nv.doi_trang_thai("Nghi viec")
+
+    # XOA NHAN VIEN
+    def xoa_nhan_vien(self, ma_nv):
+        nv = self.lay_nv(ma_nv)
+
+        if nv.cong_viec or nv.bang_cong or nv.nghi_phep:
+            raise ValueError("Nhan vien da co lich su, khong the xoa")
+
+        for cv in self.cham_soc.values():
+            if ma_nv in cv.ma_nhan_vien:
+                raise ValueError("Nhan vien dang co du lieu phan cong")
+
+        del self.nhan_vien[ma_nv]
+
+    # CHAM CONG NHAN VIEN
+    def cham_cong_nhan_vien(self, ma_nv, ngay, so_cong):
+        nv = self.lay_nv(ma_nv)
+
+        nv.cham_cong(ngay, so_cong)
+
+    # TINH LUONG NHAN VIEN
+    def tinh_luong_nhan_vien(self, ma_nv, thang, nam, phu_cap=0, thuong=0, khau_tru=0):
+        nv = self.lay_nv(ma_nv)
+
+        return nv.tinh_luong(thang, nam, phu_cap, thuong, khau_tru) 
+
+    # ===== PHOI HOP NGUOI 1 + 2: KIEM TRA NHAN VIEN DUOC PHAN CONG =====
+    def _kiem_tra_nv(self, ds_ma):
+
+        # Kiem tra ma nhan vien trung nhau
+        if len(ds_ma) != len(set(ds_ma)):
+            raise ValueError("Trung ma nhan vien trong phan cong")
+
+        # Kiem tra tung nhan vien
+        for ma in ds_ma:
+            nv = self.lay_nv(ma)
+
+            if nv.trang_thai != "Dang lam viec":
+                raise ValueError(f"Nhan vien {ma} da nghi viec")
+
+
+
+    # ===== NGUOI 2: NGHIEP VU KINH DOANH =====
     def them_khach_hang(self, *args):
         return self.kinh_doanh.them_khach_hang(*args)
 
@@ -1207,6 +1683,7 @@ class QuanLyTrangTrai:
         self.kinh_doanh.ghi_chi_phi(ma_cp, ma_cay, ngay, loai, so_tien, ghi_chu)
 
 
+    # ===== NGUOI 3: BAO CAO, KIEM TRA DU LIEU, LUU VA DOC =====
     def bao_cao(self, ma_cay=None):
 
         if ma_cay is not None:
@@ -1378,14 +1855,6 @@ class QuanLyTrangTrai:
 
         return cls.from_dict(data)
 
-
-# ==================== Main.py ====================
-from pathlib import Path
-
-
-DATA_FILE = (Path(__file__).resolve().parent / "data" / "trang_trai.json")
-
-
 def nhap(ten):
     return input(f"{ten}: ").strip()
 
@@ -1402,15 +1871,6 @@ def so(ten, so_nguyen=False):
         except ValueError:
             print("Hay nhap so hop le")
 
-def ma_nv_list():
-    du_lieu = nhap("Nhap ma nhan vien, cach nhau dau phay")
-
-    return [
-        ma.strip()
-        for ma in du_lieu.split(",")
-        if ma.strip()
-    ]
-
 def hien(ds):
     if not ds:
         print("Khong co du lieu")
@@ -1419,465 +1879,10 @@ def hien(ds):
     for doi_tuong in ds:
         print(doi_tuong.hien_thi())
 
-
 def nhap_tuy_chon(ten, hien_tai):
     """Nhan Enter de giu gia tri cu, khong ep nhap lai tat ca."""
     gia_tri = nhap(f"{ten} [{hien_tai}] (Enter = giu nguyen)")
     return gia_tri if gia_tri else None
-
-
-def chi_tiet_cay(cay):
-    print("\n========== THONG TIN LO CAY ==========")
-    for nhan, gia_tri in (
-        ("Ma lo", cay.ma), ("Ten cay", cay.ten),
-        ("Giong", cay.giong), ("Khu vuc", cay.khu_vuc),
-        ("Ma vu", cay.ma_vu), ("Ngay trong", cay.ngay_trong),
-        ("Dien tich (m2)", cay.dien_tich),
-        ("So cay ban dau", cay.so_cay_ban_dau),
-        ("So cay hien tai", cay.so_cay_hien_tai),
-        ("Trang thai", cay.trang_thai),
-        ("Ty le so cay hien tai (%)", cay.tinh_ty_le_so_cay()),
-        ("Mat do (cay/ha)", cay.tinh_mat_do()),
-    ):
-        print(f"{nhan}: {gia_tri}")
-
-    try:
-        print("So ngay tu khi trong:", cay.tinh_tuoi_ngay())
-    except ValueError:
-        print("So ngay tu khi trong: Chua den ngay trong")
-
-
-def thong_ke_cay(q):
-    ds = list(q.cay_trong.values())
-
-    if not ds:
-        print("Chua co du lieu cay trong.")
-        return
-
-    print("\n========== THONG KE CAY TRONG ==========")
-    print("So lo cay:", len(ds))
-    print("Tong dien tich (m2):", round(sum(c.dien_tich for c in ds), 2))
-    print("Tong so cay ban dau:", sum(c.so_cay_ban_dau for c in ds))
-    print("Tong so cay hien tai:", sum(c.so_cay_hien_tai for c in ds))
-
-    print("So cay theo trang thai:")
-    for tt in CayTrong.TRANG_THAI:
-        print(f"  {tt}: {sum(c.trang_thai == tt for c in ds)} lo")
-
-    theo_khu = {}
-
-    for cay in ds:
-        if cay.khu_vuc not in theo_khu:
-            theo_khu[cay.khu_vuc] = {
-                "so_lo": 0,
-                "dien_tich": 0,
-                "so_cay": 0
-            }
-
-        thong_ke = theo_khu[cay.khu_vuc]
-        thong_ke["so_lo"] += 1
-        thong_ke["dien_tich"] += cay.dien_tich
-        thong_ke["so_cay"] += cay.so_cay_hien_tai
-
-    print("Thong ke theo khu vuc:")
-
-    for khu, thong_ke in sorted(theo_khu.items()):
-        print(
-            f"  {khu}: {thong_ke['so_lo']} lo | "
-            f"{thong_ke['dien_tich']:g} m2 | "
-            f"{thong_ke['so_cay']} cay"
-        )
-
-
-def menu_nv(q):
-    while True:
-        print("\n========== QUAN LY NHAN VIEN ==========")
-        print("1. Them nhan vien\n2. Danh sach nhan vien\n3. Tim nhan vien")
-        print("4. Sua thong tin\n5. Cham cong\n6. Tinh luong")
-        print("7. Cho nghi viec\n8. Xoa nhan vien\n0. Quay lai")
-        chon = nhap("Chon")
-        if chon == "0":
-            return
-        try:
-            if chon == "1":
-                nv = NhanVien(
-                    nhap("Ma nhan vien"), nhap("Ho ten"), nhap("Chuc vu"),
-                    nhap("Ngay vao lam YYYY-MM-DD"), so("Luong mot cong"),
-                    nhap("So dien thoai")
-                )
-                q.them_nhan_vien(nv)
-                print("Da them nhan vien.")
-            elif chon == "2":
-                hien(q.danh_sach_nhan_vien())
-            elif chon == "3":
-                hien(q.tim_nhan_vien(nhap("Tu khoa")))
-            elif chon == "4":
-                nv = q.lay_nv(nhap("Ma nhan vien"))
-                thay_doi = {}
-                for truong, nhan in (
-                    ("ho_ten", "Ho ten"), ("chuc_vu", "Chuc vu"),
-                    ("ngay_vao_lam", "Ngay vao lam YYYY-MM-DD"),
-                    ("luong_mot_cong", "Luong mot cong"),
-                    ("so_dien_thoai", "So dien thoai")
-                ):
-                    gia_tri = nhap_tuy_chon(nhan, getattr(nv, truong))
-                    if gia_tri is not None:
-                        thay_doi[truong] = (float(gia_tri) if truong == "luong_mot_cong" else gia_tri)
-                q.sua_nhan_vien(nv.ma_nv, **thay_doi)
-                print("Da cap nhat.")
-            elif chon == "5":
-                q.cham_cong_nhan_vien(
-                    nhap("Ma nhan vien"), nhap("Ngay YYYY-MM-DD"),
-                    so("So cong (0 den 1)")
-                )
-                print("Da cham cong.")
-            elif chon == "6":
-                ma = nhap("Ma nhan vien")
-                thang, nam = so("Thang", True), so("Nam", True)
-                if not 1 <= thang <= 12 or not 1 <= nam <= 9999:
-                    raise ValueError("Thang hoac nam khong hop le")
-                print("Luong:", q.tinh_luong_nhan_vien(ma, thang, nam, so("Phu cap"), so("Thuong"), so("Khau tru")))
-            elif chon == "7":
-                q.nghi_viec(nhap("Ma nhan vien"))
-                print("Da ghi nhan nghi viec.")
-            elif chon == "8":
-                ma = nhap("Ma nhan vien")
-                if nhap("Xac nhan xoa? (y/n)").lower() == "y":
-                    q.xoa_nhan_vien(ma)
-                    print("Da xoa.")
-            else:
-                print("Lua chon khong hop le.")
-        except (ValueError, KeyError, TypeError) as loi:
-            print("LOI:", loi)
-
-
-def menu_cham_soc(q):
-    while True:
-        print("\n========== QUAN LY CHAM SOC ==========")
-        print("1. Them cong viec\n2. Danh sach cong viec\n3. Doi phan cong")
-        print("4. Bat dau\n5. Hoan thanh\n6. Huy cong viec\n7. Xoa cong viec")
-        print("8. Xem nhat ky\n9. Xem cong viec qua han\n0. Quay lai")
-        chon = nhap("Chon")
-        if chon == "0":
-            return
-        try:
-            if chon == "1":
-                ma, ma_cay = nhap("Ma cong viec"), nhap("Ma lo cay")
-                print("Loai hop le:", ", ".join(ChamSoc.LOAI_CONG_VIEC))
-                cv = ChamSoc(
-                    ma, ma_cay, nhap("Loai cong viec"),
-                    nhap("Ngay du kien YYYY-MM-DD"), ma_nv_list(),
-                    nhap("Noi dung"), so("So luong du kien"),
-                    nhap("Don vi"), nhap("Ten vat tu")
-                )
-                q.them_cham_soc(cv)
-                print("Da them cong viec.")
-            elif chon == "2":
-                hien(list(q.cham_soc.values()))
-            elif chon == "3":
-                q.sua_phan_cong(nhap("Ma cong viec"), ma_nv_list())
-                print("Da doi phan cong.")
-            elif chon == "4":
-                q.bat_dau_cham_soc(nhap("Ma cong viec"))
-                print("Da bat dau.")
-            elif chon == "5":
-                q.hoan_thanh_cham_soc(
-                    nhap("Ma cong viec"), nhap("Ngay thuc hien YYYY-MM-DD"),
-                    so("So luong thuc te"), so("Chi phi vat tu"),
-                    so("Chi phi nhan cong"), so("Chi phi khac"), nhap("Ghi chu")
-                )
-                print("Da hoan thanh va ghi nhan chi phi.")
-            elif chon == "6":
-                q.huy_cham_soc(nhap("Ma cong viec"), nhap("Ly do huy"))
-                print("Da huy.")
-            elif chon == "7":
-                ma = nhap("Ma cong viec")
-                if nhap("Xac nhan xoa? (y/n)").lower() == "y":
-                    q.xoa_cham_soc(ma)
-                    print("Da xoa.")
-            elif chon == "8":
-                hien_ban_ghi(q.lay_cv(nhap("Ma cong viec")).xem_nhat_ky())
-            elif chon == "9":
-                hien([cv for cv in q.cham_soc.values() if cv.kiem_tra_qua_han()])
-            else:
-                print("Lua chon khong hop le.")
-        except (ValueError, KeyError, TypeError) as loi:
-            print("LOI:", loi)
-
-
-def hien_ban_ghi(danh_sach):
-    if not danh_sach:
-        print("Khong co du lieu.")
-    for ban_ghi in danh_sach:
-        print(" | ".join(f"{ten}: {gia_tri}" for ten, gia_tri in ban_ghi.items()))
-
-
-def menu_kinh_doanh(q):
-    kd = q.kinh_doanh
-    while True:
-        print("\n========== QUAN LY KINH DOANH ==========")
-        print("1. Them khach hang\n2. Danh sach khach hang\n3. Ghi thu hoach")
-        print("4. Xem thu hoach\n5. Tao don hang\n6. Xem don hang")
-        print("7. Giao hang\n8. Thanh toan\n9. Huy don hang")
-        print("10. Ghi chi phi\n11. Xem chi phi\n12. Xem ton kho")
-        print("13. Bao cao kinh doanh\n0. Quay lai")
-        chon = nhap("Chon")
-        if chon == "0":
-            return
-        try:
-            if chon == "1":
-                q.them_khach_hang(nhap("Ma khach hang"), nhap("Ten khach hang"),
-                                  nhap("So dien thoai"), nhap("Dia chi"))
-                print("Da them khach hang.")
-            elif chon == "2":
-                hien_ban_ghi(kd.khach_hang.values())
-            elif chon == "3":
-                q.thu_hoach(nhap("Ma thu hoach"), nhap("Ma lo cay"),
-                           nhap("Ngay YYYY-MM-DD"), so("So luong kg"),
-                           nhap("Pham chat (Enter = Dat)") or "Dat")
-                print("Da ghi thu hoach.")
-            elif chon == "4":
-                hien_ban_ghi(kd.thu_hoach)
-            elif chon == "5":
-                q.tao_don(nhap("Ma don hang"), nhap("Ma lo cay"),
-                          nhap("Ma khach hang"), nhap("Ngay YYYY-MM-DD"),
-                          so("So luong kg"), so("Don gia moi kg"))
-                print("Da tao don hang.")
-            elif chon == "6":
-                hien_ban_ghi(kd.don_hang)
-            elif chon == "7":
-                kd.giao_hang(nhap("Ma don hang"), nhap("Ngay giao YYYY-MM-DD"))
-                print("Da giao hang.")
-            elif chon == "8":
-                kd.thanh_toan(nhap("Ma don hang"), so("So tien"),
-                             nhap("Ngay thanh toan YYYY-MM-DD"))
-                print("Da ghi thanh toan.")
-            elif chon == "9":
-                ma = nhap("Ma don hang")
-                if nhap("Xac nhan huy? (y/n)").lower() == "y":
-                    kd.huy_don(ma)
-                    print("Da huy don.")
-            elif chon == "10":
-                q.ghi_chi_phi(nhap("Ma chi phi"), nhap("Ma lo cay"),
-                              nhap("Ngay YYYY-MM-DD"), nhap("Loai chi phi"),
-                              so("So tien"), nhap("Ghi chu"))
-                print("Da ghi chi phi.")
-            elif chon == "11":
-                hien_ban_ghi(kd.chi_phi)
-            elif chon == "12":
-                ma = nhap("Ma lo cay")
-                q.lay_cay(ma)
-                print("Ton kho kha dung (kg):", kd.ton_kho(ma))
-            elif chon == "13":
-                ma = nhap("Ma lo cay (Enter = tat ca)") or None
-                hien_ban_ghi([q.bao_cao(ma)])
-            else:
-                print("Lua chon khong hop le.")
-        except (ValueError, KeyError, TypeError) as loi:
-            print("LOI:", loi)
-
-
-def menu_cay(q):
-
-    while True:
-        print("\n========== QUAN LY CAY TRONG ==========")
-        print("1. Them lo cay")
-        print("2. Xem danh sach lo cay")
-        print("3. Tim kiem theo ma, ten, giong, khu, vu")
-        print("4. Xem chi tiet mot lo cay")
-        print("5. Sua thong tin lo cay")
-        print("6. Ghi nhan cay chet / trong bo sung")
-        print("7. Ghi nhan sinh truong va tinh trang")
-        print("8. Xem lich su thay doi so cay")
-        print("9. Xem nhat ky sinh truong")
-        print("10. Doi trang thai lo cay")
-        print("11. Thong ke cay trong")
-        print("12. Xoa lo cay")
-        print("13. Luu du lieu")
-        print("0. Quay lai menu chinh")
-
-        chon = nhap("Chon")
-
-        if chon == "0":
-            return
-
-        try:
-            # THEM LO CAY
-            if chon == "1":
-                cay = CayTrong(
-                    nhap("Ma lo cay"),
-                    nhap("Ten cay"),
-                    nhap("Giong"),
-                    nhap("Khu vuc"),
-                    nhap("Ma vu"),
-                    so("Dien tich m2"),
-                    so("So cay ban dau", True),
-                    nhap("Ngay trong YYYY-MM-DD")
-                )
-
-                q.them_cay(cay)
-                print("Da them lo cay:", cay.ma)
-
-            # XEM DANH SACH
-            elif chon == "2":
-                ds = sorted(q.cay_trong.values(), key=lambda c: c.ma)
-
-                print(f"Danh sach: {len(ds)} lo cay")
-                hien(ds)
-
-            # TIM KIEM
-            elif chon == "3":
-                tu_khoa = nhap("Tu khoa can tim")
-                ds = q.tim_cay(tu_khoa)
-
-                print(f"Tim thay {len(ds)} lo")
-                hien(ds)
-
-            # XEM CHI TIET
-            elif chon == "4":
-                chi_tiet_cay(q.lay_cay(nhap("Ma lo can xem")))
-
-            # SUA THONG TIN
-            elif chon == "5":
-                ma = nhap("Ma lo can sua")
-                cay = q.lay_cay(ma)
-
-                print("De trong va Enter neu muon giu gia tri cu.")
-
-                ten = nhap_tuy_chon("Ten cay", cay.ten)
-                giong = nhap_tuy_chon("Giong", cay.giong)
-                khu = nhap_tuy_chon("Khu vuc", cay.khu_vuc)
-                dt = nhap_tuy_chon("Dien tich m2", cay.dien_tich)
-
-                thay_doi = {}
-
-                if ten is not None:
-                    thay_doi["ten"] = ten
-
-                if giong is not None:
-                    thay_doi["giong"] = giong
-
-                if khu is not None:
-                    thay_doi["khu_vuc"] = khu
-
-                if dt is not None:
-                    thay_doi["dien_tich"] = float(dt)
-
-                if thay_doi:
-                    q.sua_cay(ma, **thay_doi)
-                    print("Da cap nhat lo cay.")
-                else:
-                    print("Khong co thong tin thay doi.")
-
-            # GHI NHAN CAY CHET / TRONG BO SUNG
-            elif chon == "6":
-                cay = q.lay_cay(nhap("Ma lo"))
-
-                cay.ghi_nhan_so_cay(
-                    nhap("Ngay ghi nhan YYYY-MM-DD"),
-                    so("So cay chet", True),
-                    so("So cay trong bo sung", True),
-                    nhap("Ghi chu")
-                )
-
-                print(
-                    "Da ghi nhan. So cay hien tai:", cay.so_cay_hien_tai)
-
-            # GHI NHAN SINH TRUONG
-            elif chon == "7":
-                cay = q.lay_cay(nhap("Ma lo"))
-
-                cay.ghi_nhan_sinh_truong(
-                    nhap("Ngay ghi nhan YYYY-MM-DD"),
-                    nhap("Giai doan sinh truong"),
-                    nhap("Tinh trang cay"),
-                    nhap("Ghi chu")
-                )
-
-                print("Da them nhat ky sinh truong.")
-
-            # XEM LICH SU SO CAY
-            elif chon == "8":
-                cay = q.lay_cay(nhap("Ma lo"))
-
-                if not cay.lich_su_so_cay:
-                    print("Chua co lich su thay doi so cay.")
-
-                for i, x in enumerate(cay.lich_su_so_cay, 1):
-                    print(
-                        f"{i}. {x['ngay']} | "
-                        f"Chet: {x['so_cay_chet']} | "
-                        f"Bo sung: {x['so_cay_bo_sung']} | "
-                        f"Ghi chu: {x.get('ghi_chu', '')}"
-                    )
-
-            # XEM NHAT KY SINH TRUONG
-            elif chon == "9":
-                cay = q.lay_cay(nhap("Ma lo"))
-
-                if not cay.nhat_ky_sinh_truong:
-                    print("Chua co nhat ky sinh truong.")
-
-                for i, x in enumerate(cay.nhat_ky_sinh_truong, 1):
-                    print(
-                        f"{i}. {x['ngay']} | "
-                        f"{x['giai_doan']} | "
-                        f"{x['tinh_trang']} | "
-                        f"{x.get('ghi_chu', '')}"
-                    )
-
-            # DOI TRANG THAI
-            elif chon == "10":
-                cay = q.lay_cay(nhap("Ma lo"))
-
-                print("1. Dang trong")
-                print("2. Dang thu hoach")
-                print("3. Ket thuc")
-
-                lua_chon = nhap("Chon trang thai moi")
-
-                mapping = {
-                    "1": "Dang trong",
-                    "2": "Dang thu hoach",
-                    "3": "Ket thuc"
-                }
-
-                if lua_chon not in mapping:
-                    print("Trang thai khong hop le.")
-                    continue
-
-                cay.doi_trang_thai(mapping[lua_chon])
-
-                print("Trang thai moi:", cay.trang_thai)
-
-            # THONG KE CAY TRONG
-            elif chon == "11":
-                thong_ke_cay(q)
-
-            # XOA LO CAY
-            elif chon == "12":
-                cay = q.lay_cay(nhap("Ma lo can xoa"))
-
-                print("Sap xoa:", cay.hien_thi())
-
-                if nhap("Xac nhan xoa? (y/n)").lower() == "y":
-                    q.xoa_cay(cay.ma)
-                    print("Da xoa lo cay.")
-                else:
-                    print("Da huy thao tac xoa.")
-
-            # LUU DU LIEU
-            elif chon == "13":
-                q.luu(DATA_FILE)
-                print("Da luu du lieu:", DATA_FILE)
-
-            else:
-                print("Lua chon khong hop le.")
-
-        except (ValueError, KeyError, TypeError, OSError) as loi:
-            print("LOI:", loi)
-            print("Hay kiem tra du lieu va thu lai.")
-
 
 def hien_bao_cao(ql):
     print("\n========== BAO CAO TRANG TRAI ==========")
@@ -1906,7 +1911,6 @@ def hien_bao_cao(ql):
 
     print("-" * 45)
 
-
 def main():
 
     print("\n" + "=" * 54)
@@ -1920,7 +1924,7 @@ def main():
     
     if DATA_FILE.exists():
         try:
-            ql = QuanLyTrangTrai.doc(str(DATA_FILE))
+            ql = QuanLyTrangTrai.doc(DATA_FILE)
 
             print("\nTrang thai: Da tai trang trai thanh cong")
             print("Du lieu: Da doc tu file trang_trai.json")
@@ -1934,8 +1938,8 @@ def main():
     else:
         ql = QuanLyTrangTrai()
 
-        print("\nTrang thai: Khoi tao trang trai moi")
-        print("Du lieu: Chua co du lieu duoc luu")
+        print("\nChua co du lieu duoc luu.")
+        print("Da khoi tao trang trai moi!")
 
     # ====================================
     # BUOC 2: HIEN THI MENU CHINH
@@ -1947,14 +1951,20 @@ def main():
         print("MENU CHINH".center(54))
         print("=" * 54)
 
+        print("\n--- NGUOI 1: CAY TRONG VA CHAM SOC ---")
         print("1. Quan ly cay trong")
-        print("2. Quan ly nhan vien")
-        print("3. Quan ly cham soc cay trong")
+        print("2. Quan ly cham soc cay trong")
+
+        print("\n--- NGUOI 2: NHAN VIEN VA KINH DOANH ---")
+        print("3. Quan ly nhan vien")
         print("4. Quan ly kinh doanh")
+
+        print("\n--- NGUOI 3: QUAN LY TONG HOP ---")
         print("5. Bao cao tong hop trang trai")
         print("6. Luu du lieu")
         print("7. Tai lai du lieu da luu")
-        print("0. Thoat chuong trinh")
+
+        print("\n0. Thoat chuong trinh")
 
         print("=" * 50)
 
@@ -1973,19 +1983,19 @@ def main():
 
                 menu_cay(ql)
 
-            # QUAN LY NHAN VIEN
+            # QUAN LY CHAM SOC CAY TRONG (NGUOI 1)
             elif chon == "2":
-
-                print("\nDang mo quan ly nhan vien...")
-
-                menu_nv(ql)
-
-            # QUAN LY CHAM SOC
-            elif chon == "3":
 
                 print("\nDang mo quan ly cham soc...")
 
                 menu_cham_soc(ql)
+
+            # QUAN LY NHAN VIEN (NGUOI 2)
+            elif chon == "3":
+
+                print("\nDang mo quan ly nhan vien...")
+
+                menu_nv(ql)
 
             # QUAN LY KINH DOANH
             elif chon == "4":
@@ -2098,8 +2108,5 @@ def main():
 
     print("\nChuong trinh da ket thuc.")
 
-
-# CHAY CHUONG TRINH
 if __name__ == "__main__":
     main()
-

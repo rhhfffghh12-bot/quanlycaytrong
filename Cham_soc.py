@@ -1,22 +1,10 @@
-from datetime import datetime, date
+from datetime import date, datetime
 
 
 class ChamSoc:
-    LOAI_CONG_VIEC = (
-        "Tuoi nuoc",
-        "Bon phan",
-        "Phun thuoc",
-        "Cat tia",
-        "Kiem tra sau benh",
-        "Khac"
-    )
+    LOAI_CONG_VIEC = ("Tuoi nuoc", "Bon phan", "Phun thuoc", "Cat tia", "Kiem tra sau benh", "Khac")
 
-    TRANG_THAI = (
-        "Chua thuc hien",
-        "Dang thuc hien",
-        "Hoan thanh",
-        "Da huy"
-    )
+    TRANG_THAI = ("Chua thuc hien", "Dang thuc hien", "Hoan thanh", "Da huy")
 
 
     def __init__(self, ma_cv, ma_cay, loai, ngay_du_kien, ma_nhan_vien, noi_dung, so_luong_du_kien=0, don_vi="", ten_vat_tu=""):
@@ -42,8 +30,9 @@ class ChamSoc:
         self.so_luong_du_kien = self._kiem_tra_so(so_luong_du_kien, "Số lượng dự kiến")
 
         # Thông tin vật tư
-        if self.so_luong_du_kien > 0:
-           self.don_vi = self._kiem_tra_chuoi(don_vi, "Đơn vị")
+        self.don_vi = self._kiem_tra_chuoi(don_vi, "Đơn vị") if self.so_luong_du_kien > 0 else don_vi
+
+        self.ten_vat_tu = ten_vat_tu
 
         # Trạng thái ban đầu 
         self.trang_thai = "Chua thuc hien"
@@ -151,9 +140,8 @@ class ChamSoc:
         if self.trang_thai != "Chua thuc hien":
             raise ValueError("Trang thai khong hop le")
 
-        if not self.ma_nhan_vien:
-            raise ValueError("Chua phan cong nhan vien")
-
+        # Cho phep bat dau khi chua phan cong nhan vien.
+        # Phan cong la tuy chon; khong phai rang buoc de chay rieng module.
         self.trang_thai = "Dang thuc hien"
 
         self._ghi_nhat_ky("Bat dau", "Bat dau cham soc")
@@ -242,7 +230,6 @@ class ChamSoc:
             "ly_do_huy": self.ly_do_huy,
             "nhat_ky": self.xem_nhat_ky()
         }
-
 
 
     @classmethod

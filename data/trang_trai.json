@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "cay_trong": [
+    {
+      "ma": "A",
+      "ten": "quyt",
+      "giong": "an qua",
+      "khu_vuc": "trang trai",
+      "ma_vu": "1",
+      "dien_tich": 1000.0,
+      "so_cay_ban_dau": 100,
+      "so_cay_hien_tai": 100,
+      "ngay_trong": "2025-01-02",
+      "trang_thai": "Dang thu hoach",
+      "lich_su_so_cay": [
+        {
+          "ngay": "2026-01-03",
+          "so_cay_chet": 10,
+          "so_cay_bo_sung": 10,
+          "ghi_chu": "benh"
+        },
+        {
+          "ngay": "2025-05-01",
+          "so_cay_chet": 10,
+          "so_cay_bo_sung": 10,
+          "ghi_chu": "benh"
+        },
+        {
+          "ngay": "2025-02-01",
+          "so_cay_chet": 10,
+          "so_cay_bo_sung": 10,
+          "ghi_chu": "benh"
+        }
+      ],
+      "nhat_ky_sinh_truong": [
+        {
+          "ngay": "2025-01-02",
+          "giai_doan": "ra hoa",
+          "tinh_trang": "tot",
+          "ghi_chu": "sinh truong tot"
+        },
+        {
+          "ngay": "2025-03-01",
+          "giai_doan": "tot",
+          "tinh_trang": "sinhtruong tot",
+          "ghi_chu": "on"
+        }
+      ]
+    }
+  ],
+  "nhan_vien": [],
+  "cham_soc": [],
+  "kinh_doanh": {
+    "khach_hang": {},
+    "thu_hoach": [],
+    "don_hang": [],
+    "chi_phi": []
+  }
+}

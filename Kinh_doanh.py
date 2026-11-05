@@ -1,7 +1,7 @@
-
 from datetime import date
 from math import isfinite
 from copy import deepcopy
+
 
 class KinhDoanh:
 
@@ -44,6 +44,14 @@ class KinhDoanh:
             raise ValueError(f"{ten_truong} khong hop le")
         return gia_tri
 
+
+    @staticmethod
+    def _tim(danh_sach, truong, ma):
+        return next((x for x in danh_sach if x[truong] == ma), None)
+
+    @classmethod
+    def _ma_da_co(cls, danh_sach, truong, ma):
+        return cls._tim(danh_sach, truong, ma) is not None
 
     def them_khach_hang(self, ma_kh, ten, so_dien_thoai="", dia_chi=""):
 
@@ -172,6 +180,7 @@ class KinhDoanh:
 
         return dh
 
+
     def thanh_toan(self, ma_dh, so_tien, ngay=None):
         # Tim don hang
         dh = self._tim(self.don_hang, "ma_dh", ma_dh)
@@ -251,9 +260,7 @@ class KinhDoanh:
         loai = self._chuoi(loai, "Loai chi phi")
 
         # Kiem tra so tien
-        so_tien = self._so(
-            so_tien, "So tien", lon_hon_0=True
-        )
+        so_tien = self._so(so_tien, "So tien", lon_hon_0=True)
 
         # Kiem tra ma chi phi trung
         if self._ma_da_co(self.chi_phi, "ma_cp", ma_cp):
@@ -298,9 +305,7 @@ class KinhDoanh:
         for dh in self.don_hang:
             if dh["trang_thai"] == "Da giao":
                 if ma_cay is None or dh["ma_cay"] == ma_cay:
-                    thanh_tien = (
-                        dh["so_luong_kg"] * dh["don_gia"]
-                    )
+                    thanh_tien = (dh["so_luong_kg"] * dh["don_gia"])
                     tong_doanh_thu += thanh_tien
 
         return tong_doanh_thu
@@ -315,13 +320,11 @@ class KinhDoanh:
 
         return tong_da_thu
 
-
     def tinh_cong_no(self, ma_cay=None):
         doanh_thu = self.tinh_doanh_thu(ma_cay)
         da_thu = self.tinh_da_thu(ma_cay)
 
         return doanh_thu - da_thu
-
 
     def tinh_loi_nhuan_tam_tinh(self, ma_cay=None):
         doanh_thu = self.tinh_doanh_thu(ma_cay)
@@ -330,7 +333,6 @@ class KinhDoanh:
         loi_nhuan = doanh_thu - chi_phi
 
         return loi_nhuan
-
 
     def bao_cao(self, ma_cay=None):
 
@@ -400,6 +402,3 @@ class KinhDoanh:
         kd.chi_phi = deepcopy(chi_phi)
 
         return kd
-
-
-

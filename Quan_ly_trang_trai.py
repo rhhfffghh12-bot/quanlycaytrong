@@ -1,11 +1,12 @@
+import json
+import os
+from pathlib import Path
+
 from Cay_trong import CayTrong
 from Cham_soc import ChamSoc
 from nhan_vien import NhanVien
 from Kinh_doanh import KinhDoanh
 
-import json
-import os
-from pathlib import Path
 
 class QuanLyTrangTrai:
     def __init__(self):
@@ -15,6 +16,7 @@ class QuanLyTrangTrai:
         self.kinh_doanh = KinhDoanh()
 
 
+    # ===== NGUOI 1: NGHIEP VU CAY TRONG =====
     def them_cay(self, cay):
         if not isinstance(cay, CayTrong):
             raise TypeError("Phai la doi tuong CayTrong")
@@ -31,7 +33,160 @@ class QuanLyTrangTrai:
         return self.cay_trong[ma]
 
 
-    # THEM NHAN VIEN
+    def tim_cay(self, tu_khoa):
+        tu_khoa = tu_khoa.casefold().strip()
+        return [c for c in self.cay_trong.values()
+                if any(tu_khoa in str(getattr(c, truong)).casefold()
+                       for truong in ("ma", "ten", "giong", "khu_vuc", "ma_vu"))]
+
+    def sua_cay(self, ma, **thay_doi):
+        self.lay_cay(ma).cap_nhat(**thay_doi)
+
+    def xoa_cay(self, ma):
+        self.lay_cay(ma)
+        if any(cv.ma_cay == ma for cv in self.cham_soc.values()):
+            raise ValueError("Lo cay co lich su cham soc, khong the xoa")
+        if any(item["ma_cay"] == ma for danh_sach in
+               (self.kinh_doanh.thu_hoach, self.kinh_doanh.don_hang, self.kinh_doanh.chi_phi)
+               for item in danh_sach):
+            raise ValueError("Lo cay co du lieu kinh doanh, khong the xoa")
+        del self.cay_trong[ma]
+
+    # ===== NGUOI 1: NGHIEP VU CHAM SOC CAY TRONG =====
+    def lay_cv(self, ma_cv):
+        if ma_cv not in self.cham_soc:
+            raise ValueError("Khong tim thay cong viec")
+        return self.cham_soc[ma_cv]
+
+    def them_cham_soc(self, cv):
+
+        # Kiem tra doi tuong
+        if not isinstance(cv, ChamSoc):
+            raise TypeError("Can doi tuong ChamSoc")
+
+        # Kiem tra ma trung
+        if cv.ma_cv in self.cham_soc:
+            raise ValueError("Trung ma cong viec")
+
+        # Kiem tra lo cay
+        cay = self.lay_cay(cv.ma_cay)
+
+        if cay.trang_thai == "Ket thuc":
+            raise ValueError("Lo cay da ket thuc")
+
+        # Kiem tra ngay cham soc
+        if cv.ngay_du_kien < cay.ngay_trong:
+            raise ValueError("Ngay cham soc truoc ngay trong")
+
+        # Khong phan cong van duoc tao va chay cong viec doc lap.
+        # Neu co ma NV, ma do van phai hop le de bao ve tinh nhat quan.
+        self._kiem_tra_nv(cv.ma_nhan_vien)
+
+        for ma in cv.ma_nhan_vien:
+            nv = self.lay_nv(ma)
+
+            if cv.ma_cv in nv.cong_viec:
+                raise ValueError("Cong viec da co trong nhan vien")
+
+        # Luu cong viec
+        self.cham_soc[cv.ma_cv] = cv
+
+        # Dong bo sang nhan vien
+        for ma in cv.ma_nhan_vien:
+            nv = self.lay_nv(ma)
+            nv.them_cong_viec(cv.ma_cv)
+
+
+    def sua_phan_cong(self, ma_cv, ds_ma):
+
+        cv = self.lay_cv(ma_cv)
+
+        if cv.trang_thai != "Chua thuc hien":
+            raise ValueError("Chi doi phan cong khi chua bat dau")
+
+        self._kiem_tra_nv(ds_ma)
+
+        ma_cu = set(cv.ma_nhan_vien)
+        ma_moi = set(ds_ma)
+
+        for ma in ma_moi - ma_cu:
+            if ma_cv in self.lay_nv(ma).cong_viec:
+                raise ValueError("Cong viec da co trong nhan vien")
+
+        cv.phan_cong(ds_ma)
+
+        # Xoa phan cong cu
+        for ma in ma_cu - ma_moi:
+            self.lay_nv(ma).cong_viec.pop(ma_cv, None)
+
+        # Them phan cong moi
+        for ma in ma_moi - ma_cu:
+            self.lay_nv(ma).them_cong_viec(ma_cv)
+
+
+    def bat_dau_cham_soc(self, ma_cv):
+
+        cv = self.lay_cv(ma_cv)
+
+        self._kiem_tra_nv(cv.ma_nhan_vien)
+
+        cv.bat_dau()
+
+
+    def hoan_thanh_cham_soc(self, ma_cv, ngay, so_luong=0, chi_phi_vat_tu=0, chi_phi_nhan_cong=0, chi_phi_khac=0, ghi_chu=""):
+
+        cv = self.lay_cv(ma_cv)
+        cay = self.lay_cay(cv.ma_cay)
+
+        if ngay < cay.ngay_trong:
+            raise ValueError("Ngay thuc hien truoc ngay trong")
+
+        # Khong ghi trung chi phi
+        for cp in self.kinh_doanh.chi_phi:
+            if cp.get("nguon_tham_chieu") == ma_cv:
+                raise ValueError("Chi phi cong viec da duoc ghi nhan")
+
+        # Hoan thanh cong viec
+        cv.hoan_thanh(ngay, so_luong, chi_phi_vat_tu, chi_phi_nhan_cong, chi_phi_khac, ghi_chu)
+
+        # Cap nhat cho nhan vien
+        for ma in cv.ma_nhan_vien:
+            nv = self.lay_nv(ma)
+            nv.hoan_thanh_cong_viec(ma_cv)
+
+        # Tinh tong chi phi
+        tong = cv.tinh_chi_phi()
+
+        # Chuyen sang KinhDoanh
+        if tong > 0:
+            self.kinh_doanh.ghi_chi_phi(f"CS:{ma_cv}", cv.ma_cay, ngay, "Cham soc", tong, f"{cv.loai} - {cv.noi_dung}", ma_cv)
+
+
+    def huy_cham_soc(self, ma_cv, ly_do):
+
+        cv = self.lay_cv(ma_cv)
+        cv.huy(ly_do)
+
+        for ma in cv.ma_nhan_vien:
+            nv = self.lay_nv(ma)
+            nv.cong_viec.pop(ma_cv, None)
+
+
+    def xoa_cham_soc(self, ma_cv):
+
+        cv = self.lay_cv(ma_cv)
+
+        if cv.trang_thai != "Chua thuc hien":
+            raise ValueError("Chi xoa cong viec chua thuc hien")
+
+        for ma in cv.ma_nhan_vien:
+            nv = self.lay_nv(ma)
+            nv.cong_viec.pop(ma_cv, None)
+
+        del self.cham_soc[ma_cv]
+
+
+    # ===== NGUOI 2: QUAN LY NHAN VIEN =====
     def them_nhan_vien(self, nv):
         if not isinstance(nv, NhanVien):
             raise TypeError("Phai la doi tuong NhanVien")
@@ -113,11 +268,7 @@ class QuanLyTrangTrai:
 
         return nv.tinh_luong(thang, nam, phu_cap, thuong, khau_tru) 
 
-    def sua_nhan_vien(self, ma_nv, **thay_doi):
-        nv = self.lay_nv(ma_nv)
-        nv.cap_nhat(**thay_doi)
-
-
+    # ===== PHOI HOP NGUOI 1 + 2: KIEM TRA NHAN VIEN DUOC PHAN CONG =====
     def _kiem_tra_nv(self, ds_ma):
 
         # Kiem tra ma nhan vien trung nhau
@@ -132,145 +283,8 @@ class QuanLyTrangTrai:
                 raise ValueError(f"Nhan vien {ma} da nghi viec")
 
 
-    def lay_cv(self, ma_cv):
-        if ma_cv not in self.cham_soc:
-            raise ValueError("Khong tim thay cong viec")
-        return self.cham_soc[ma_cv]
 
-    def them_cham_soc(self, cv):
-
-        # Kiem tra doi tuong
-        if not isinstance(cv, ChamSoc):
-            raise TypeError("Can doi tuong ChamSoc")
-
-        # Kiem tra ma trung
-        if cv.ma_cv in self.cham_soc:
-            raise ValueError("Trung ma cong viec")
-
-        # Kiem tra lo cay
-        cay = self.lay_cay(cv.ma_cay)
-
-        if cay.trang_thai == "Ket thuc":
-            raise ValueError("Lo cay da ket thuc")
-
-        # Kiem tra ngay cham soc
-        if cv.ngay_du_kien < cay.ngay_trong:
-            raise ValueError("Ngay cham soc truoc ngay trong")
-
-        # Kiem tra nhan vien
-        self._kiem_tra_nv(cv.ma_nhan_vien)
-
-        for ma in cv.ma_nhan_vien:
-            nv = self.lay_nv(ma)
-
-            if cv.ma_cv in nv.cong_viec:
-                raise ValueError("Cong viec da co trong nhan vien")
-
-        # Luu cong viec
-        self.cham_soc[cv.ma_cv] = cv
-
-        # Dong bo sang nhan vien
-        for ma in cv.ma_nhan_vien:
-            nv = self.lay_nv(ma)
-            nv.them_cong_viec(cv.ma_cv)
-
-
-    def sua_phan_cong(self, ma_cv, ds_ma):
-
-        cv = self.lay_cv(ma_cv)
-
-        if cv.trang_thai != "Chua thuc hien":
-            raise ValueError("Chi doi phan cong khi chua bat dau")
-
-        self._kiem_tra_nv(ds_ma)
-
-        ma_cu = set(cv.ma_nhan_vien)
-        ma_moi = set(ds_ma)
-
-        for ma in ma_moi - ma_cu:
-            if ma_cv in self.lay_nv(ma).cong_viec:
-                raise ValueError("Cong viec da co trong nhan vien")
-
-        cv.phan_cong(ds_ma)
-
-        # Xoa phan cong cu
-        for ma in ma_cu - ma_moi:
-            self.lay_nv(ma).cong_viec.pop(ma_cv, None)
-
-        # Them phan cong moi
-        for ma in ma_moi - ma_cu:
-            self.lay_nv(ma).them_cong_viec(ma_cv)
-
-
-    def bat_dau_cham_soc(self, ma_cv):
-
-        cv = self.lay_cv(ma_cv)
-
-        self._kiem_tra_nv(cv.ma_nhan_vien)
-
-        cv.bat_dau()
-
-
-    def hoan_thanh_cham_soc(self, ma_cv, ngay, so_luong=0, chi_phi_vat_tu=0, chi_phi_nhan_cong=0, chi_phi_khac=0, ghi_chu=""):
-
-        cv = self.lay_cv(ma_cv)
-        cay = self.lay_cay(cv.ma_cay)
-
-        if ngay < cay.ngay_trong:
-            raise ValueError("Ngay thuc hien truoc ngay trong")
-
-        # Khong ghi trung chi phi
-        for cp in self.kinh_doanh.chi_phi:
-            if cp.get("nguon_tham_chieu") == ma_cv:
-                raise ValueError("Chi phi cong viec da duoc ghi nhan")
-
-        # Hoan thanh cong viec
-        cv.hoan_thanh(ngay, so_luong, chi_phi_vat_tu, chi_phi_nhan_cong, chi_phi_khac, ghi_chu)
-
-        # Cap nhat cho nhan vien
-        for ma in cv.ma_nhan_vien:
-            nv = self.lay_nv(ma)
-            nv.hoan_thanh_cong_viec(ma_cv)
-
-        # Tinh tong chi phi
-        tong = cv.tinh_chi_phi()
-
-        # Chuyen sang KinhDoanh
-        if tong > 0:
-            self.kinh_doanh.ghi_chi_phi(
-                f"CS:{ma_cv}",
-                cv.ma_cay,
-                ngay,
-                "Cham soc",
-                tong,
-                f"{cv.loai} - {cv.noi_dung}",
-                ma_cv
-            )
-
-
-    def huy_cham_soc(self, ma_cv, ly_do):
-
-        cv = self.lay_cv(ma_cv)
-        cv.huy(ly_do)
-
-        for ma in cv.ma_nhan_vien:
-            nv = self.lay_nv(ma)
-            nv.cong_viec.pop(ma_cv, None)
-
-
-    def xoa_cham_soc(self, ma_cv):
-
-        cv = self.lay_cv(ma_cv)
-
-        if cv.trang_thai != "Chua thuc hien":
-            raise ValueError("Chi xoa cong viec chua thuc hien")
-
-        for ma in cv.ma_nhan_vien:
-            nv = self.lay_nv(ma)
-            nv.cong_viec.pop(ma_cv, None)
-
-        del self.cham_soc[ma_cv]
-
+    # ===== NGUOI 2: NGHIEP VU KINH DOANH =====
     def them_khach_hang(self, *args):
         return self.kinh_doanh.them_khach_hang(*args)
 
@@ -303,6 +317,7 @@ class QuanLyTrangTrai:
         self.kinh_doanh.ghi_chi_phi(ma_cp, ma_cay, ngay, loai, so_tien, ghi_chu)
 
 
+    # ===== NGUOI 3: BAO CAO, KIEM TRA DU LIEU, LUU VA DOC =====
     def bao_cao(self, ma_cay=None):
 
         if ma_cay is not None:
@@ -473,7 +488,3 @@ class QuanLyTrangTrai:
             data = json.load(f)
 
         return cls.from_dict(data)
-
-
-
-
